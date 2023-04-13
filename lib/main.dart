@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 void main() {
@@ -7,109 +9,476 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSwatch(
+          backgroundColor: const Color(0xffe64d3d),
+        ),
+        primaryColor: const Color(0xffe64d3d),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const Pomodoro(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class Pomodoro extends StatelessWidget {
+  const Pomodoro({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: PomodoroScreen(),
+    );
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class PomodoroScreen extends StatefulWidget {
+  const PomodoroScreen({super.key});
 
-  void _incrementCounter() {
+  @override
+  State<PomodoroScreen> createState() => _PomodoroScreenState();
+}
+
+class _PomodoroScreenState extends State<PomodoroScreen> {
+  final PageController _pageController =
+      PageController(viewportFraction: 0.2, initialPage: 2);
+  int _initSeconds = 1500;
+  static const int _initTakeRestSeconds = 300;
+  late int _totalSeconds = _initSeconds;
+  late int _totalTakeRestSeconds = _initTakeRestSeconds;
+  final int _totalRound = 4;
+  int _currentRound = 0;
+  final int _totalGoal = 12;
+  int _currentGoal = 0;
+  bool _isRunning = false;
+  bool _isRoundFinished = false;
+  bool _isInit = true;
+  bool _isAnimating = false;
+  late Timer _timer;
+  late Timer _takeRestTimer;
+  String restMessage = 'Take a rest';
+  List<String> timeList = ['15', '20', '25', '30', '35'];
+  int _initPage = 2;
+  int _currentIndex = 2;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  String format(int seconds) {
+    var duration = Duration(seconds: seconds);
+    return duration.toString().split(".").first.substring(2, 7);
+  }
+
+  void onTakeRestTick(Timer timer) {
+    if (_totalTakeRestSeconds == 0) {
+      setState(() {
+        _isRoundFinished = false;
+        _totalTakeRestSeconds = _initTakeRestSeconds;
+        restMessage = 'Take a rest';
+      });
+      timer.cancel();
+    } else {
+      setState(() {
+        _totalTakeRestSeconds--;
+      });
+    }
+  }
+
+  void onTick(Timer timer) {
+    if (_totalSeconds == 0) {
+      setState(() {
+        _currentRound++;
+        _isRunning = false;
+        _isRoundFinished = true;
+        _totalSeconds = _initSeconds;
+        _isInit = true;
+        if (_currentRound == _totalRound) {
+          _currentGoal++;
+          _currentRound = 0;
+        }
+        if (_currentGoal == _totalGoal) {
+          _currentGoal = 0;
+        }
+      });
+      timer.cancel();
+
+      // take a rest
+      _takeRestTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        onTakeRestTick,
+      );
+    } else {
+      setState(() {
+        _totalSeconds--;
+      });
+    }
+  }
+
+  void onStartPressed() {
+    if (_isRoundFinished) {
+      if (_totalTakeRestSeconds > 150) {
+        restMessage = 'Please Take a rest';
+      } else {
+        restMessage = 'Please !! Take a rest !!';
+      }
+    } else {
+      _timer = Timer.periodic(
+        const Duration(seconds: 1),
+        onTick,
+      );
+      setState(() {
+        _isRunning = true;
+        _isInit = false;
+      });
+    }
+  }
+
+  void onPausePressed() {
+    _timer.cancel();
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isRunning = false;
     });
+  }
+
+  void onReset() {
+    setState(() {
+      _isRunning = false;
+      _isRoundFinished = false;
+      _totalSeconds = _initSeconds;
+      _isInit = true;
+    });
+    _timer.cancel();
+  }
+
+  void onSelectedTime(int index) {
+    if (!_isRunning) {
+      setState(() {
+        _isInit = true;
+        _initPage = index;
+        String selectedTime = timeList[index];
+        _initSeconds = int.parse(selectedTime) * 60;
+        _totalSeconds = _initSeconds;
+      });
+
+      _onItemClicked(index);
+    }
+  }
+
+  void _onItemClicked(int index) {
+    if (!_isAnimating) {
+      _isAnimating = true;
+      _pageController
+          .animateTo(
+        index * 90,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.linear,
+      )
+          .then((value) {
+        _isAnimating = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+    return SafeArea(
+      child: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.background,
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              flex: 1,
+              child: Container(
+                alignment: Alignment.topLeft,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 30,
+                  horizontal: 30,
+                ),
+                child: const Text(
+                  'POMOTIMER',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Flexible(
+              flex: 1,
+              child: Opacity(
+                opacity: !_isRunning && _isRoundFinished ? 1 : 0,
+                child: Text(
+                  '$restMessage ☕ ${format(_totalTakeRestSeconds)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ),
+                ),
+              ),
+            ),
+            Flexible(
+              flex: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 30),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Card(
+                        time: format(_totalSeconds).toString().substring(0, 2)),
+                    SizedBox(
+                      width: 50,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Card(time: format(_totalSeconds).toString().substring(3)),
+                  ],
+                ),
+              ),
+            ),
+            Flexible(
+              flex: 1,
+              child: SizedBox(
+                width: 600,
+                height: 40,
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                  },
+                  itemCount: timeList.length,
+                  itemBuilder: (context, index) {
+                    double opacity =
+                        1.0 - (0.2 * (_currentIndex - index).abs());
+                    return GestureDetector(
+                      onTap: () => onSelectedTime(index),
+                      child: Opacity(
+                        opacity: _initPage == index ? 1 : opacity,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 10),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: _initPage == index
+                                ? Colors.white
+                                : Theme.of(context).primaryColor,
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.6),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Text(
+                            timeList[index],
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: _initPage == index
+                                  ? Theme.of(context).primaryColor
+                                  : Colors.white.withOpacity(0.6),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Flexible(
+              flex: 1,
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 5,
+                      horizontal: 20,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      iconSize: 36,
+                      onPressed: _isRunning ? onPausePressed : onStartPressed,
+                      icon: Icon(
+                        _isRunning ? Icons.pause : Icons.play_arrow,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (!_isInit) const SizedBox(height: 5),
+                  if (!_isInit)
+                    GestureDetector(
+                      onTap: onReset,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 5,
+                          horizontal: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Text(
+                          'Reset',
+                          style: TextStyle(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Flexible(
+              flex: 1,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      Text(
+                        '$_currentRound/$_totalRound',
+                        style: TextStyle(
+                          fontSize: 24,
+                          color: Colors.white.withOpacity(0.4),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'ROUND',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    children: [
+                      Text(
+                        '$_currentGoal/$_totalGoal',
+                        style: TextStyle(
+                          fontSize: 24,
+                          color: Colors.white.withOpacity(0.4),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'GOAL',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class Card extends StatefulWidget {
+  const Card({
+    super.key,
+    required this.time,
+  });
+
+  final String time;
+
+  @override
+  State<Card> createState() => _CardState();
+}
+
+class _CardState extends State<Card> {
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Transform.translate(
+          offset: const Offset(9, -9),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              color: Colors.white.withOpacity(0.5),
+            ),
+            width: 120,
+            height: 150,
+          ),
+        ),
+        Transform.translate(
+          offset: const Offset(4.5, -4.5),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              color: Colors.white.withOpacity(0.6),
+            ),
+            width: 130,
+            height: 150,
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            color: Colors.white,
+          ),
+          width: 140,
+          height: 150,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                widget.time,
+                style: TextStyle(
+                  color: Theme.of(context).primaryColor,
+                  fontSize: 72,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
